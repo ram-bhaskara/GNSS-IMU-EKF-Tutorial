@@ -1,8 +1,8 @@
-function [accelData, gyroData, GPSData] = dataRead()
+function [accelData, gyroData, GPSData] = dataRead(datapath)
 
-accelFile = 'RawAccel.csv'; 
-gyroFile = 'RawGyro.csv'; 
-GPSFile = 'OnboardGPS.csv'; 
+accelFile = fullfile(datapath, "RawAccel.csv"); 
+gyroFile = fullfile(datapath, "RawGyro.csv"); 
+GPSFile = fullfile(datapath, "OnboardGPS.csv"); 
 
 accelTbl = readtable(accelFile); 
 accelTimeStamp = accelTbl.Timpstemp;

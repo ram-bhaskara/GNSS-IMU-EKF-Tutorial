@@ -1,26 +1,22 @@
-clc; 
-% clear; 
-
-dataPath = '.\'; 
-addpath(dataPath); 
+clc; clear; 
+cd('C:\Users\brc06\OneDrive - Texas A&M University\Jobs\PREP\GNC\sensors\GNSS\GNSS_INS_bhaskara'); 
 %% DATA READ
-[accelData, gyroData, GPSData] = dataRead(); 
+dataPath = './AGZ_subset/Log Files'; 
+[accelData, gyroData, GPSData] = dataRead(dataPath); 
 %% Init
 
 % state: [r, v, q, b_a, b_g]
 % initial position from GPS fix
-
-% wgs84 = wgs84Ellipsoid('meter'); 
+ 
 ref_lla = GPSData(1,2:4);
-% ecef_r0 = lla2ecef(GPSData(1,2:4));
-% [x0,y0,z0] = ecef2ned(ecef2(1), ecef2(2), ecef2(3), GPSData(1,2), GPSData(1,3), GPSData(1,4), wgs84); 
-% r0 = [x0, y0, z0];
-[posx, posy, posz] = gps2cart(ref_lla(1), ref_lla(2), ref_lla(3)); 
-r0 = [posx, posy, posz]; 
-% r0 = ecef_r0; 
+pos_ecef = lla2ecef([ref_lla(1), ref_lla(2), ref_lla(3)], 'WGS84');
+r0 = pos_ecef; 
+
+% ecef2enu
+wgs84 = wgs84Ellipsoid('meter');
+[xE, yN, zU] = ecef2enu(r0(1),r0(2),r0(3),ref_lla(1),ref_lla(2),ref_lla(3),wgs84); 
+
 v0_ned = GPSData(1,5:7);
-% [v0x, v0y, v0z] = ned2ecef(v0_ned(1), v0_ned(2),v0_ned(3), ref_lla(1), ref_lla(2), ref_lla(3), 'wgs84');
-% v0 = [v0x, v0y, v0z]; 
 v0 = v0_ned;
 
 q0 = [1 0 0 0]; 
@@ -28,7 +24,7 @@ accelBias0 = [0 0 0];
 gyroBias0 = [0 0 0];
 
 
-mx0 = [r0 v0 q0 accelBias0 gyroBias0]';
+mx0 = [zeros(1,3) v0 q0 accelBias0 gyroBias0]';
 nStates = length(mx0); 
 
 eph = GPSData(1,8); epv = GPSData(1,9); %hDop, vDop in meters
@@ -52,7 +48,6 @@ gpsTimes = GPSData(:,1);
 allTimes = sort(unique([imuTimes; gpsTimes]));
 
 % EKF
-
 mxkm1 = mx0; 
 Pxxkm1 = Pxx0;
 
@@ -60,8 +55,6 @@ xcount = 1;
 txstore(:,xcount) = allTimes(1);
 mxstore(:,xcount) = mxkm1;
 sxstore(:,xcount) = sqrt(diag(Pxxkm1));
-
-
 
 for k = 2:length(allTimes)
     tk = allTimes(k); 
@@ -84,7 +77,8 @@ for k = 2:length(allTimes)
         epv  = GPSData(gpsIdx, 9);              % vertical DOP
         s_var = GPSData(gpsIdx, 10);            % velocity variance
 
-        [mxkp, Pxxkp] = EKF_update(mxkm, Pxxkm, lla, v_meas, ref_lla, eph, epv, s_var);
+        [mxkp, Pxxkp] = EKF_update(mxkm, Pxxkm, lla, v_meas, ref_lla, ...
+                eph, epv, s_var, wgs84);
     else
         mxkp = mxkm;
         Pxxkp = Pxxkm;
@@ -101,44 +95,51 @@ for k = 2:length(allTimes)
 end
 
 %% Plots
-figure; 
 x_est = mxstore(1,:); 
 y_est = mxstore(2,:); 
 z_est = mxstore(3,:); 
-
 vx_est = mxstore(4,:); 
 vy_est = mxstore(5,:); 
 vz_est = mxstore(6,:); 
 
-txstore = (txstore - txstore(1))*1e-6; 
-subplot(3,1,1)
-plot(txstore, x_est); ylabel('x')
-% hold on; 
-% plot(txstore, x_est+sxstore(1,:), 'r', txstore, -sxstore(1,:), 'r'); hold off
-subplot(3,1,2)
-plot(txstore, y_est); ylabel('y')
-% hold on; 
-% plot(txstore, sxstore(2,:), 'r', txstore, -sxstore(2,:), 'r'); hold off
-subplot(3,1,3)
-plot(txstore, z_est); ylabel('z')
-% hold on; 
-% plot(txstore, sxstore(3,:), 'r', txstore, -sxstore(3,:), 'r'); hold off
+tx = (txstore - txstore(1))*1e-6; 
+
+loadGroundTruthAGL();
+x_GT = x_gps - x_gps(1);
+y_GT = y_gps - y_gps(1); 
+z_GT = z_gps - z_gps(1); 
+
 
 figure; 
 subplot(3,1,1)
-plot(x_gps); ylabel('x')
+plot(tx, x_est,'lineWidth', 2.5); ylabel('x [m]');
+hold on; 
+plot(x_GT, '-.r','lineWidth',1.5); 
+grid on; axis tight; legend('Estimate','Truth')
+
 subplot(3,1,2)
-plot(y_gps); ylabel('y')
+plot(tx, y_est,'lineWidth', 2.5); ylabel('y [m]')
+hold on; 
+plot(y_GT, '-.r','lineWidth',1.5);
+grid on; axis tight; legend('Estimate','Truth')
+
 subplot(3,1,3)
-plot(z_gps); ylabel('z')
-title("Onboard GPS")
+plot(tx, z_est,'lineWidth', 2.5); ylabel('z [m]')
+hold on; 
+plot(z_GT, '-.r','lineWidth',1.5); 
+grid on; axis tight; legend('Estimate','Truth')
 
 %
 figure; 
-% plot3(x_est, y_est, z_est, 'r'); 
-% hold on; 
-% plot3(x_gt, y_gt, z_gt, 'b'); 
-% hold off;
+plot3(x_est, y_est, z_est,'lineWidth',2.5); 
+hold on; 
+plot3(x_GT, y_GT, z_GT, '-.r','lineWidth',3); 
+hold off;
+title('Trajectory: Estimate vs Ground Truth'); 
+xlabel('x[m]'); ylabel('y[m]'); zlabel('z[m]'); 
+grid on; 
+legend('Estimate position', 'True trajectory'); 
+view([0 90]);
 %% Functions
 
 function OM = quatOmega(omega)
@@ -218,31 +219,23 @@ function [mxkm, Pxxkm] = EKF_propagate(dt, mxkm1, Pxxkm1, Pww, accel, gyro)
 
 end
 
-function [mxkp, Pxxkp] = EKF_update(mxkm, Pxxkm, lla, v_meas, ref_lla, eph, epv, s_var)
+function [mxkp, Pxxkp] = EKF_update(mxkm, Pxxkm, lla, v_meas, ref_lla, eph, epv, s_var, wgs84)
     
-ecef = lla2ecef(lla);         % MATLAB function
-wgs84 = wgs84Ellipsoid('meter');
-% [px, py, pz] = ecef2ned(ecef(1), ecef(2), ecef(3), ...
-%                 ref_lla(1), ref_lla(2), ref_lla(3), wgs84); 
-
-% p_meas  = [px; py; pz];
-
-[posx, posy, posz] = gps2cart(lla(1), lla(2), lla(3)); 
-ecef = [posx, posy, posz]; 
-% [v0x, v0y, v0z] = ned2ecef(v_meas(1), v_meas(2),v_meas(3), ref_lla(1), ref_lla(2), ref_lla(3), wgs84);
-% v_ecef = [v0x, v0y, v0z];
-% zk = [p_meas; v_meas]; % in ned frame
-zk = [ecef, v_meas]'; 
-mzkm = [mxkm(1:3); mxkm(4:6)]; 
-
-Hx = zeros(6, 16);
-Hx(1:3, 1:3) = eye(3);  % 
-Hx(4:6, 4:6) = eye(3);  % 
-
-Pvv = diag([eph^2, eph^2, epv^2, s_var^2, s_var^2, s_var^2]);
-
-Hv = 1; 
-
+    ecef_ = lla2ecef([lla(1), lla(2), lla(3)], 'WGS84'); 
+    [xN, yE, zD] = ecef2enu(ecef_(1), ecef_(2),ecef_(3), ...
+                    ref_lla(1),ref_lla(2),ref_lla(3), ...
+                    wgs84); 
+    
+    zk = [xN, yE, zD, v_meas]'; 
+    mzkm = [mxkm(1:3); mxkm(4:6)]; 
+    
+    Hx = zeros(6, 16);
+    Hx(1:3, 1:3) = eye(3);  % 
+    Hx(4:6, 4:6) = eye(3);  % 
+    
+    Pvv = diag([eph^2, eph^2, epv^2, s_var^2, s_var^2, s_var^2]);
+    
+    Hv = 1; 
     
     Pxzkm = Pxxkm*Hx';
     Pzzkm = Hx*Pxxkm*Hx' + Hv*Pvv*Hv';
