@@ -1,5 +1,4 @@
 clc; clear; 
-cd('C:\Users\brc06\OneDrive - Texas A&M University\Jobs\PREP\GNC\sensors\GNSS\GNSS_INS_bhaskara'); 
 %% DATA READ
 dataPath = './AGZ_subset/Log Files'; 
 [accelData, gyroData, GPSData] = dataRead(dataPath); 
@@ -138,7 +137,7 @@ hold off;
 title('Trajectory: Estimate vs Ground Truth'); 
 xlabel('x[m]'); ylabel('y[m]'); zlabel('z[m]'); 
 grid on; 
-legend('Estimate position', 'True trajectory'); 
+legend('Estimated position', 'True trajectory'); 
 view([0 90]);
 %% Functions
 
