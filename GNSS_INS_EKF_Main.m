@@ -2,11 +2,12 @@ clc; clear;
 %% DATA READ
 dataPath = './data'; 
 [accelData, gyroData, GPSData] = dataRead(dataPath); 
-run('loadGroundTruthAGL.m');
+addpath('EKF_functions','math_utils'); 
+run('loadGroundTruthAGL.m'); % ground truth - their definition
 %% Initialize EKF
 
 % state: [r, v, q, b_a, b_g]
-% initial position from GPS fix
+% initial position from GPS fix - warm start
  
 ref_lla = GPSData(1,2:4);
 pos_ecef = lla2ecef([ref_lla(1), ref_lla(2), ref_lla(3)], 'WGS84');
@@ -23,7 +24,6 @@ q0 = [1 0 0 0];
 accelBias0 = [0 0 0]; 
 gyroBias0 = [0 0 0];
 
-
 mx0 = [zeros(1,3) v0 q0 accelBias0 gyroBias0]';
 nStates = length(mx0); 
 
@@ -38,7 +38,14 @@ Pgb0 = 1e-4 * eye(3);
 
 Pxx0 = blkdiag(Prr0, Pvv0, Pqq0, Pab0, Pgb0);
 
-Pww = Pxx0; % changes based on accel readings
+Q_pos = 1e-3 * eye(3);
+Q_vel = 1e-2 * eye(3);
+Q_q   = 1e-6 * eye(4);
+Q_ab  = 1e-6 * eye(3);
+Q_gb  = 1e-6 * eye(3);
+% sigma_g_ = 1e-3; sigma_a_ = 1e-2;
+% rw_bg_ = 1e-6; rw_ba_ = 1e-5;
+Pww = blkdiag(Q_pos, Q_vel, Q_q, Q_ab, Q_gb);
 
 %% Propagation step - 
 % Asynchronous accel and gyro data
@@ -104,11 +111,9 @@ vz_est = mxstore(6,:);
 
 tx = (txstore - txstore(1))*1e-6; 
 
-
 x_GT = x_gps - x_gps(1);
 y_GT = y_gps - y_gps(1); 
 z_GT = z_gps - z_gps(1); 
-
 
 figure; 
 subplot(3,1,1)
@@ -140,129 +145,3 @@ xlabel('x[m]'); ylabel('y[m]'); zlabel('z[m]');
 grid on; 
 legend('Estimated position', 'True trajectory'); 
 view([0 90]);
-%% Functions
-
-function OM = quatOmega(omega)
-    wx = omega(1); wy = omega(2); wz = omega(3);
-    OM = [  0   -wx -wy -wz;
-           wx    0   wz -wy;
-           wy  -wz   0   wx;
-           wz   wy -wx   0];
-end
-
-function Gq = G(q)
-    q0 = q(1); q1 = q(2); q2 = q(3); q3 = q(4);
-    Gq = [ -q1, -q2, -q3;   % Row 1
-            q0, -q3,  q2;   % Row 2
-            q3,  q0, -q1;   % Row 3
-           -q2,  q1,  q0];  % Row 4
-end
-
-function S = skew(v)
-    S = [   0   -v(3)  v(2);
-          v(3)   0   -v(1);
-         -v(2)  v(1)   0];
-end
-
-function [mxkm, Pxxkm] = EKF_propagate(dt, mxkm1, Pxxkm1, Pww, accel, gyro)
-
-   g = [0; 0; 9.81]; % Gravity in NED frame
-    
-    % Extract state
-    pxkm1     = mxkm1(1:3); 
-    vxkm1     = mxkm1(4:6); 
-    qxkm1     = mxkm1(7:10);  % quaternion (scalar-first)
-    accBkm1   = mxkm1(11:13); 
-    gyroBkm1  = mxkm1(14:16); 
-    
-    % Sensor correction
-    a_corr = accel - accBkm1;
-    w_corr = gyro  - gyroBkm1;
-    
-    % Rotation matrix (body to world)
-    R = quat2rotm(qxkm1');  % transpose needed for MATLAB
-
-    % Propagate state
-    pxkm = pxkm1 + vxkm1 * dt; 
-    vxkm = vxkm1 + (R * a_corr + g) * dt;
-
-    OM = quatOmega(w_corr); 
-    qxkm = qxkm1 + 0.5 * OM * qxkm1 * dt;
-    qxkm = qxkm / norm(qxkm);  % Normalize quaternion
-
-    accBkm = accBkm1;
-    gyroBkm = gyroBkm1;
-    
-    mxkm = [pxkm; vxkm; qxkm; accBkm; gyroBkm];
-   
-    % -------- Jacobian F --------
-    F = eye(16);
-    
-    % Position wrt velocity
-    F(1:3, 4:6) = eye(3) * dt;
-    
-    % Velocity wrt quaternion (∂v/∂q ≈ -R * skew(a_corr) * dt)
-    F(4:6, 8:10) = -R * skew(a_corr) * dt;
-    
-    % Velocity wrt accel bias
-    F(4:6, 11:13) = -R * dt; 
-    
-    % Quaternion wrt quaternion
-    F(7:10, 7:10) = eye(4) + 0.5 * quatOmega(w_corr) * dt;
-    
-    % Quaternion wrt gyro bias
-    Gq = G(qxkm1); 
-    F(7:10, 14:16) = -0.5 * Gq * dt;
-
-    % Covariance propagation
-    Pxxkm = F * Pxxkm1 * F' + Pww;
-
-end
-
-function [mxkp, Pxxkp] = EKF_update(mxkm, Pxxkm, lla, v_meas, ref_lla, eph, epv, s_var, wgs84)
-    
-    ecef_ = lla2ecef([lla(1), lla(2), lla(3)], 'WGS84'); 
-    [xN, yE, zD] = ecef2enu(ecef_(1), ecef_(2),ecef_(3), ...
-                    ref_lla(1),ref_lla(2),ref_lla(3), ...
-                    wgs84); 
-    
-    zk = [xN, yE, zD, v_meas]'; 
-    mzkm = [mxkm(1:3); mxkm(4:6)]; 
-    
-    Hx = zeros(6, 16);
-    Hx(1:3, 1:3) = eye(3);  % 
-    Hx(4:6, 4:6) = eye(3);  % 
-    
-    Pvv = diag([eph^2, eph^2, epv^2, s_var^2, s_var^2, s_var^2]);
-    
-    Hv = 1; 
-    
-    Pxzkm = Pxxkm*Hx';
-    Pzzkm = Hx*Pxxkm*Hx' + Hv*Pvv*Hv';
-    Kk = Pxzkm/Pzzkm;
-    mxkp = mxkm + Kk*(zk - mzkm);
-    I = eye(size(Pxxkm));
-    Pxxkp = (I - Kk * Hx) * Pxxkm * (I - Kk * Hx)' + Kk * Pvv * Kk';  % Joseph form
-end
-
-function [x,y,z] = gps2cart(lat,lon,alt)
-
-    % WGS84 ellipsoid constants:
-    a = 6378137; % earth radius (semi-major axis of the ellipse)
-    e = 8.1819190842622e-2; % first eccentricity
-    
-    % intermediate calculation
-    % N is vertical radius of curvature
-    
-    lat = lat / 180 * pi;
-    lon = lon / 180 * pi;
-    N = a ./ sqrt(1 - e^2 .* sin(lat).^2);
-    
-    % results:
-%     x = (N + alt) .* cos(lat) .* cos(lon);
-    x = (N + alt) .* cos(lat) .* lon;
-%     y = (N + alt) .* cos(lat) .* sin(lon);
-    y = (N + alt) .* lat;
-%     z = ((1 - e^2) .* N + alt) .* sin(lat);
-    z = alt;
-end
