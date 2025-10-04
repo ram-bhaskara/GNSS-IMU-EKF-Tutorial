@@ -21,7 +21,7 @@ function [mxkm, Pxxkm] = EKF_propagate(dt, mxkm1, Pxxkm1, Pww, accel, gyro)
     vxkm = vxkm1 + (R * a_corr + g) * dt;
 
     OM = quatOmega(w_corr); 
-    qxkm = qxkm1 + 0.5 * OM * qxkm1 * dt;
+    qxkm = qxkm1 + 0.5 * OM * qxkm1 * dt; % additive quat is a bad assumption
     qxkm = qxkm / norm(qxkm);  % Normalize quaternion
 
     accBkm = accBkm1;
