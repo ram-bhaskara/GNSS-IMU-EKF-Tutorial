@@ -1,4 +1,11 @@
-
+clc; clear; 
+%% DATA READ
+addpath('./UKF_functions/');
+dataPath = './data';
+[accelData, gyroData, GPSData] = dataRead(dataPath); 
+addpath('EKF_functions','math_utils'); 
+run('loadGroundTruthAGL.m'); % ground truth - their definition
+%%
 ref_lla = GPSData(1,2:4);
 pos_ecef = lla2ecef([ref_lla(1), ref_lla(2), ref_lla(3)], 'WGS84');
 r0 = pos_ecef; 
@@ -153,6 +160,3 @@ xlabel('x[m]'); ylabel('y[m]'); zlabel('z[m]');
 grid on; 
 legend('Estimated position', 'True trajectory'); 
 view([0 90]);
-
-
-

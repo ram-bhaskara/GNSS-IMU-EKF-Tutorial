@@ -1,5 +1,6 @@
 clc; clear; 
 %% DATA READ
+addpath('./EKF_functions'); 
 dataPath = './data'; 
 [accelData, gyroData, GPSData] = dataRead(dataPath); 
 addpath('EKF_functions','math_utils'); 
