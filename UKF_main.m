@@ -1,9 +1,8 @@
 clc; clear; 
 %% DATA READ
-addpath('./UKF_functions/');
+addpath('./UKF_functions/','math_utils');
 dataPath = './data';
 [accelData, gyroData, GPSData] = dataRead(dataPath); 
-addpath('EKF_functions','math_utils'); 
 run('loadGroundTruthAGL.m'); % ground truth - their definition
 %%
 ref_lla = GPSData(1,2:4);
@@ -39,10 +38,10 @@ Pxx0 = blkdiag(Prr0, Pvv0, Pqq0, Pab0, Pgb0);
 Pww = Pxx0; % changes based on accel readings
 
 Q_pos = 1e-3 * eye(3);
-Q_vel = 1e-2 * eye(3);
-Q_q   = 1e-6 * eye(4);
-Q_ab  = 1e-6 * eye(3);
-Q_gb  = 1e-8 * eye(3);
+Q_vel = 1e-3 * eye(3);
+Q_q   = 1e-4 * eye(4);
+Q_ab  = 1e-5 * eye(3);
+Q_gb  = 1e-5 * eye(3);
 Pww = blkdiag(Q_pos, Q_vel, Q_q, Q_ab, Q_gb);
 
 %% UKF Parameters
@@ -135,19 +134,19 @@ subplot(3,1,1)
 plot(tx, x_est,'lineWidth', 2.5); ylabel('x [m]');
 hold on; 
 plot(x_GT, '-.r','lineWidth',1.5); 
-grid on; axis tight; legend('Estimate','Truth')
+grid on; axis tight; legend('UKF_x','Truth')
 
 subplot(3,1,2)
 plot(tx, y_est,'lineWidth', 2.5); ylabel('y [m]')
 hold on; 
 plot(y_GT, '-.r','lineWidth',1.5);
-grid on; axis tight; legend('Estimate','Truth')
+grid on; axis tight; legend('UKF_y','Truth')
 
 subplot(3,1,3)
 plot(tx, z_est,'lineWidth', 2.5); ylabel('z [m]')
 hold on; 
 plot(z_GT, '-.r','lineWidth',1.5); 
-grid on; axis tight; legend('Estimate','Truth')
+grid on; axis tight; legend('UKF_z','Truth')
 
 %
 figure; 
@@ -155,7 +154,7 @@ plot3(x_est, y_est, z_est,'lineWidth',2.5);
 hold on; 
 plot3(x_GT, y_GT, z_GT, '-.r','lineWidth',3); 
 hold off;
-title('Trajectory: Estimate vs Ground Truth'); 
+title('UKF Trajectory: Estimate vs Ground Truth'); 
 xlabel('x[m]'); ylabel('y[m]'); zlabel('z[m]'); 
 grid on; 
 legend('Estimated position', 'True trajectory'); 

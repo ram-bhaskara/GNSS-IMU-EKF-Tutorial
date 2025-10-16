@@ -1,9 +1,8 @@
 clc; clear; 
 %% DATA READ
-addpath('./EKF_functions'); 
+addpath('EKF_functions','math_utils'); 
 dataPath = './data'; 
 [accelData, gyroData, GPSData] = dataRead(dataPath); 
-addpath('EKF_functions','math_utils'); 
 run('loadGroundTruthAGL.m'); % ground truth - their definition
 %% Initialize EKF
 
@@ -40,10 +39,10 @@ Pgb0 = 1e-4 * eye(3);
 Pxx0 = blkdiag(Prr0, Pvv0, Pqq0, Pab0, Pgb0);
 
 Q_pos = 1e-3 * eye(3);
-Q_vel = 1e-2 * eye(3);
-Q_q   = 1e-6 * eye(4);
-Q_ab  = 1e-6 * eye(3);
-Q_gb  = 1e-6 * eye(3);
+Q_vel = 1e-3 * eye(3);
+Q_q   = 1e-4 * eye(4);
+Q_ab  = 1e-5 * eye(3);
+Q_gb  = 1e-5 * eye(3);
 % sigma_g_ = 1e-3; sigma_a_ = 1e-2;
 % rw_bg_ = 1e-6; rw_ba_ = 1e-5;
 Pww = blkdiag(Q_pos, Q_vel, Q_q, Q_ab, Q_gb);
